@@ -1,0 +1,126 @@
+---
+title: "COCA: Cluster-of-clusters analysis"
+output: html_document
+---
+
+# Library
+```{r}
+library(tidyverse)
+
+# install.packages("coca")
+library(coca)
+
+# devtools::install_github("maxconway/SNFtool")
+library(SNFtool)
+
+# install.packages("PINSPlus")
+library(PINSPlus)
+```
+
+# COCA: Cluster-of-cluster analysis
+```{r}
+### Test data
+data <- list()
+data[[1]] <- as.matrix(read.csv(system.file("extdata", "dataset1.csv", package = "coca"), row.names = 1))
+data[[2]] <- as.matrix(read.csv(system.file("extdata", "dataset2.csv", package = "coca"), row.names = 1))
+data[[3]] <- as.matrix(read.csv(system.file("extdata", "dataset3.csv", package = "coca"), row.names = 1))
+lapply(data, dim)
+
+### Annotation
+true_labels <- as.matrix(read.csv(system.file("extdata", "cluster_labels.csv", package = "coca"), row.names = 1))
+annotations <- data.frame(true_labels = as.factor(true_labels))
+```
+
+```{r, fig.width=4, fig.height=3}
+# Matrix of clusters (MOC)を作成する
+moc = buildMOC(data, 
+               M = 3, # Number of datasets
+               
+               ## Number of clusters in each dataset 
+               #K = c(5, 5, 5), 
+                
+               # Maximum number of clusters in each dataset (クラスタ数Kが不明な場合)
+               maxK = c(10, 10, 10), 
+               
+               # Method for clustering each dataset
+               # kmeans, hclust (default), pam
+               methods = "hclust", 
+              
+               # 距離指標
+               # euclidean (default), manhattan, gower, maximum, canberra ...
+               distances = "euclidean", 
+               
+               # Silhouette plot (最適クラスタ数の指標)
+               # Silhouette: https://qiita.com/deaikei/items/11a10fde5bb47a2cf2c2
+               savePNG = T, # しない場合はFALSE
+               fileName = "COCA.MOC")
+
+# データッセット毎にクラスタリングした結果
+# row: サンプル, column: データセット
+head(moc$clLabels) 
+
+# MOC
+head(moc$moc)
+
+# 可視化
+coca::plotMOC(moc$moc, moc$datasetIndicator, annotations = annotations)
+```
+
+```{r}
+# Cluster-of-cluster analysis
+coca = coca::coca(moc$moc, 
+                  
+                  ## Cluster number
+                  # K = 5,
+                  maxK = 6,
+                  
+                  ## Options for Consensus clustering
+                  B = 1000, # number of iterations
+                  pItem = 0.8, # proportion of items sampled at each iteration
+                  ccClMethod = "kmeans", # hclust or kmeans (default) 
+                  hclustMethod = "average", # ccClMethod=="hclust"の場合
+                  ccDistHC = "euclidean", # ccClMethod=="hclust"の場合
+                  choiceKmethod = "silhouette" # 最適クラスタ数選択の基準
+                  
+                  # Silhouette plot (最適クラスタ数の指標)
+                  # Silhouette: https://qiita.com/deaikei/items/11a10fde5bb47a2cf2c2
+                  #savePNG = T, # しない場合はFALSE
+                  #fileName = "COCA.COCA"
+                  )
+
+# COCAの結果
+coca$clusterLabels
+```
+
+# SNF: Similarity network fusion
+Similarity network fusion for aggregating data types on a genomic scale. Wang et al. Nat Methods. (2014)
+```{r}
+# Test data
+data(Data1)
+data(Data2)
+
+# Calculate distance 
+dist1 = as.matrix(dist(Data1))
+dist2 = as.matrix(dist(Data2))
+
+# Similarity matrix W (論文 式(1))
+W1 = affinityMatrix(dist1, 
+                    K=20, # 式(1) 考慮するNeighborの数, 10〜30が推奨
+                    sigma=0.5) # 式(1) μ, 0.3〜0.8が推奨
+W2 = affinityMatrix(dist2, K=20, sigma=0.5)
+
+# Similarity network fusion
+W = SNF(list(W1,W2), 
+        K=20, #  
+        t=20) # 式(4)Iterationの回数 10〜20が推奨
+
+# Spectral clustering
+group = spectralClustering(W, 
+                           K=2) # Number of clusters
+displayClusters(W, group)
+```
+
+# PINSPlus
+```{r}
+
+```
