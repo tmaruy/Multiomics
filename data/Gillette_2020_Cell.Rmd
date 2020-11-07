@@ -1,0 +1,109 @@
+---
+title: "Create test multi-omics data: Gillette et al. 2020. Cell"
+output: html_document
+---
+
+# Citation
+```{r eval=F}
+Title: Proteogenomic Characterization Reveals Therapeutic Vulnerabilities in Lung Adenocarcinoma
+Author: Gillette et al. Cell. 2020
+
+# Metadata downloaded from supplementary table 1
+https://www.cell.com/cms/10.1016/j.cell.2020.06.013/attachment/9825d461-af3d-418f-9df0-ad142bc455e4/mmc1.xlsx
+
+# Multi-omicss profiling downloaded from Supplemeentary table 2
+https://www.cell.com/cms/10.1016/j.cell.2020.06.013/attachment/9825d461-af3d-418f-9df0-ad142bc455e4/mmc2.xlsx
+https://www.cell.com/cms/10.1016/j.cell.2020.06.013/attachment/9825d461-af3d-418f-9df0-ad142bc455e4/mmc3.xlsx
+
+# Survival data
+https://cptc-xfer.uis.georgetown.edu/publicData/Phase_III_Data/S056_LUAD_Gillette_Cell2020/CPTAC_LUAD_metadata/S046_S056_BI_CPTAC3_LUAD_Discovery_Cohort_Clinical_Data_r2_July2020.xlsx
+```
+
+# Load libraries
+```{r}
+library(useful)
+library(tidyverse)
+library(readxl)
+```
+
+# Load data
+## Metadata 
+```{r}
+survival = read_xlsx("Gillette_2020_Cell/S046_S056_BI_CPTAC3_LUAD_Discovery_Cohort_Clinical_Data_r2_July2020.xlsx", sheet=2)
+survival = survival %>% column_to_rownames("case_id")
+idx = grep("^days", colnames(survival))
+survival = survival[,idx]
+for(i in seq_len(ncol(survival))) survival[,i] = as.numeric(survival[,i])
+
+types = gsub("_at_[0-9]+months_follow_up", "", colnames(survival))
+types = factor(types, levels=unique(types))
+survival = t(apply(survival, 1, tapply, types, function(x) ifelse(sum(!is.na(x))==0, NA, max(x[!is.na(x)]))))
+survival = survival %>% as.data.frame() %>% rownames_to_column("Participant")
+head(survival)
+
+meta = read_xlsx("Gillette_2020_Cell/mmc1.xlsx", sheet=2)
+meta = left_join(meta, survival, by="Participant")
+head(meta)
+```
+
+## Methylome
+```{r}
+file = "Gillette_2020_Cell/mmc2.xlsx"
+```
+
+```{r}
+methyl = read_xlsx(file, sheet="Table S2C", skip=2)
+methyl = methyl %>% mutate(geneSymbol = as.character(geneSymbol)) %>% filter(geneSymbol != "na")
+
+dup_genes = methyl$geneSymbol[duplicated(methyl$geneSymbol)]
+methyl = methyl %>% filter(!(geneSymbol %in% dup_genes)) %>% column_to_rownames("geneSymbol")
+methyl = methyl[,-(1:2)]
+for(i in seq_len(ncol(methyl))) methyl[,i] = suppressWarnings(as.numeric(methyl[,i]))
+```
+
+## Gene expression data
+```{r}
+mrna = read_xlsx(file, sheet="Table S2D", skip=2)
+mrna = mrna %>% mutate(geneSymbol = as.character(geneSymbol)) %>% filter(geneSymbol != "na")
+
+dup_genes = mrna$geneSymbol[duplicated(mrna$geneSymbol)]
+mrna = mrna %>% filter(!(geneSymbol %in% dup_genes)) %>% column_to_rownames("geneSymbol")
+mrna = mrna[,-(1:5)]
+for(i in seq_len(ncol(mrna))) mrna[,i] = suppressWarnings(as.numeric(mrna[,i]))
+```
+
+## miRNA expression
+```{r}
+mirna = read_xlsx(file, sheet="Table S2F", skip=2)
+mirna = mirna %>% mutate(Name = as.character(Name)) %>% filter(Name != "na")
+
+dup_genes = mirna$ID[duplicated(mirna$ID)]
+mirna = mirna %>% filter(!(ID %in% dup_genes)) %>% column_to_rownames("ID")
+mirna_id = mirna$Name; names(mirna_id) = rownames(mirna)
+mirna = mirna[,-c(1:6)]
+for(i in (1:ncol(mirna))) mirna[,i] = suppressWarnings(as.numeric(mirna[,i]))
+```
+
+## Proteome
+```{r}
+file = "Gillette_2020_Cell/mmc3.xlsx"
+```
+
+```{r}
+prot = read_xlsx(file, sheet="Table S3A", skip=2)
+prot = prot %>% mutate(geneSymbol = as.character(geneSymbol)) %>% filter(geneSymbol != "na")
+
+colnames(prot)[1] = "ID"
+dup_genes = prot$ID[duplicated(prot$ID)]
+prot = prot %>% filter(!(ID %in% dup_genes)) %>% column_to_rownames("ID")
+prot_id = prot$geneSymbol; names(prot_id) = rownames(prot)
+prot = prot[,-c(1:17)]
+for(i in 1:(ncol(prot))) prot[,i] = suppressWarnings(as.numeric(prot[,i]))
+```
+
+# Save
+```{r}
+saveRDS(list(meta=meta, mirna_id=mirna_id, prot_id=prot_id, dat=list(mrna=mrna, mirna=mirna, prot=prot, methyl=methyl)), file="Gillette_2020_Cell.rds")
+```
+
+
